@@ -1,0 +1,16 @@
+[package]
+name = "lockd"
+version = "0.1.0"
+authors = ["Kilobyte22 <stiepen22@gmx.de>"]
+
+[dependencies]
+dbus = "0.3"
+toml = "0.1"
+
+[[bin]]
+name = "lockd"
+path = "src/daemon.rs"
+
+[[bin]]
+name = "lockctl"
+path = "src/control.rs"

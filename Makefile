@@ -1,0 +1,2 @@
+.PHONY all
+	cargo build

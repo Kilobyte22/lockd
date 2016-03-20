@@ -1,5 +1,3 @@
-#![feature(libc)]
-
 extern crate toml;
 extern crate libc;
 extern crate dbus;

@@ -1,3 +1,5 @@
+use std::sync::mpsc::Sender;
+
 pub enum LockMessage {
   Lock,
   Unlock
@@ -21,5 +23,13 @@ pub enum CoreMessage {
   SuspendOnLid(bool),
   LidClosed,
   Suspending,
-  Suspended
+  Suspended,
+  QueryFlag(CoreFlag, Sender<bool>)
+}
+
+#[derive(Debug)]
+pub enum CoreFlag {
+  SuspendOnLid,
+  Locking,
+  Locked
 }

@@ -13,8 +13,9 @@ mod msg;
 mod lockscreen;
 mod inhibit;
 mod react;
+mod api;
 
-use msg::{LockMessage, InhibitMessage, CoreMessage};
+use msg::{LockMessage, InhibitMessage, CoreMessage, CoreFlag};
 
 struct ActorMainHandles {
   lockscreen: Sender<LockMessage>,
@@ -45,6 +46,10 @@ fn main() {
   let core = core_send.clone();
   thread::spawn(||{
     react::actor_react(core);
+  });
+  let core = core_send.clone();
+  thread::spawn(||{
+    api::actor_api(core);
   });
 
   let handles = ActorMainHandles {
@@ -125,6 +130,13 @@ fn actor_main(handles: ActorMainHandles) {
             handles.lockscreen.send(LockMessage::Lock).unwrap();
             state.locking = true;
           }
+        },
+        CoreMessage::QueryFlag(flag, channel) => {
+          channel.send(match flag {
+            CoreFlag::SuspendOnLid => !state.inhibit_lid,
+            CoreFlag::Locking => state.locking,
+            CoreFlag::Locked => state.locked
+          }).unwrap();
         }
       }
     }

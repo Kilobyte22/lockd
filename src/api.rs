@@ -23,18 +23,18 @@ pub fn actor_api(core: Sender<CoreMessage>) {
         })
       ).add_m(
         f.method("SetSuspendOnLid", |m, _, _| {
-          core.send(CoreMessage::SuspendOnLid(m.get1().unwrap()));
+          core.send(CoreMessage::SuspendOnLid(m.get1().unwrap())).unwrap();
           Ok(vec![m.method_return()])
         }).inarg::<bool, _>("value")
       ).add_m(
         f.method("GetSuspendOnLid", |m, _, _| {
           let (tx, rx) = mpsc::channel::<bool>();
-          core.send(CoreMessage::QueryFlag(CoreFlag::SuspendOnLid, tx));
+          core.send(CoreMessage::QueryFlag(CoreFlag::SuspendOnLid, tx)).unwrap();
           Ok(vec![m.method_return().append1(rx.recv().unwrap())])
         }).outarg::<bool, _>("value")
       ).add_m(
         f.method("Exit", |m, _, _| {
-          core.send(CoreMessage::Exit);
+          core.send(CoreMessage::Exit).unwrap();
           Ok(vec![m.method_return()])
         })
       )

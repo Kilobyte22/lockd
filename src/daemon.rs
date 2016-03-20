@@ -111,12 +111,6 @@ fn actor_main(handles: ActorMainHandles) {
             }
           }
         },
-        CoreMessage::LidClosed => {
-          if !state.locked {
-            handles.lockscreen.send(LockMessage::Lock).unwrap();
-            state.locking = true;
-          }
-        },
         CoreMessage::Suspending => {
           if !state.locked {
             handles.lockscreen.send(LockMessage::Lock).unwrap();
@@ -131,9 +125,9 @@ fn actor_main(handles: ActorMainHandles) {
         },
         CoreMessage::QueryFlag(flag, channel) => {
           channel.send(match flag {
-            CoreFlag::SuspendOnLid => !state.inhibit_lid,
-            CoreFlag::Locking => state.locking,
-            CoreFlag::Locked => state.locked
+            CoreFlag::SuspendOnLid => !state.inhibit_lid
+            //CoreFlag::Locking => state.locking,
+            //CoreFlag::Locked => state.locked
           }).unwrap();
         }
       }

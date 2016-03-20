@@ -21,7 +21,6 @@ pub enum CoreMessage {
   // ReloadConfig,
   Exit,
   SuspendOnLid(bool),
-  LidClosed,
   Suspending,
   Suspended,
   QueryFlag(CoreFlag, Sender<bool>)
@@ -29,7 +28,7 @@ pub enum CoreMessage {
 
 #[derive(Debug)]
 pub enum CoreFlag {
-  SuspendOnLid,
-  Locking,
-  Locked
+  SuspendOnLid
+  //Locking, TODO: Add dbus api
+  //Locked TODO: Add dbus api
 }

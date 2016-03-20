@@ -1,8 +1,7 @@
 use dbus::{OwnedFd, Message, Connection, BusType};
-use std::sync::{mpsc, Mutex, Arc};
+use std::sync::{Mutex, Arc};
 use std::sync::mpsc::{Sender, Receiver};
-use std::thread;
-use msg::{LockMessage, InhibitMessage, CoreMessage};
+use msg::{InhibitMessage, CoreMessage};
 
 pub fn actor_inhibit(core: Sender<CoreMessage>, cmd: Receiver<InhibitMessage>) {
   InhibitData {
@@ -17,7 +16,7 @@ struct InhibitData {
 }
 
 impl InhibitData {
-  fn actor_run(&self, core: Sender<CoreMessage>, cmd: Receiver<InhibitMessage>) {
+  fn actor_run(&self, _core: Sender<CoreMessage>, cmd: Receiver<InhibitMessage>) {
     let connection = Connection::get_private(BusType::System).unwrap();
     for msg in cmd {
       match msg {

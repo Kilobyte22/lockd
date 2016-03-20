@@ -1,9 +1,8 @@
 use std::process::{Command, Child};
-use std::sync::mpsc;
 use std::sync::mpsc::{Sender, Receiver};
 use std::thread;
 
-use msg::{LockMessage, InhibitMessage, CoreMessage};
+use msg::{LockMessage, CoreMessage};
 
 pub fn actor_lockscreen(core: Sender<CoreMessage>, cmd: Receiver<LockMessage>) {
   let mut pid: Option<u32> = None;
@@ -12,7 +11,7 @@ pub fn actor_lockscreen(core: Sender<CoreMessage>, cmd: Receiver<LockMessage>) {
       LockMessage::Lock => {
         let child = lock_command();
         pid = Some(child.id());
-        core.send(CoreMessage::Locked);
+        core.send(CoreMessage::Locked).unwrap();
         let core_clone = core.clone();
         thread::spawn(||{
           actor_lock_instance(core_clone, child);
@@ -35,6 +34,6 @@ fn lock_command() -> Child {
 }
   
 fn actor_lock_instance(core: Sender<CoreMessage>, mut child: Child) {
-  child.wait();
-  core.send(CoreMessage::Unlocked);
+  child.wait().unwrap();
+  core.send(CoreMessage::Unlocked).unwrap();
 }

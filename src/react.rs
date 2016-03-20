@@ -1,8 +1,6 @@
-use dbus::{OwnedFd, Message, Connection, BusType, ConnectionItem};
-use std::sync::{mpsc, Mutex, Arc};
-use std::sync::mpsc::{Sender, Receiver};
-use std::thread;
-use msg::{LockMessage, InhibitMessage, CoreMessage};
+use dbus::{Connection, BusType, ConnectionItem};
+use std::sync::mpsc::{Sender};
+use msg::CoreMessage;
 
 pub fn actor_react(core: Sender<CoreMessage>) {
   let con = Connection::get_private(BusType::System).unwrap();

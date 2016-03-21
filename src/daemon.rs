@@ -25,7 +25,8 @@ struct State {
   locked: bool,
   inhibit_lid: bool,
   locking: bool,
-  should_exit: bool
+  should_exit: bool,
+  autolock: bool
 }
 
 fn main() {
@@ -64,7 +65,8 @@ fn actor_main(handles: ActorMainHandles) {
         locked: false,
         inhibit_lid: false,
         locking: false,
-        should_exit: false
+        should_exit: false,
+        autolock: true
     };
     handles.inhibitors.send(InhibitMessage::CreateDelay).unwrap();
     for message in handles.inbox {
@@ -125,10 +127,19 @@ fn actor_main(handles: ActorMainHandles) {
         },
         CoreMessage::QueryFlag(flag, channel) => {
           channel.send(match flag {
-            CoreFlag::SuspendOnLid => !state.inhibit_lid
+            CoreFlag::SuspendOnLid => !state.inhibit_lid,
             //CoreFlag::Locking => state.locking,
-            //CoreFlag::Locked => state.locked
+            //CoreFlag::Locked => state.locked,
+            CoreFlag::AutoLock => state.autolock
           }).unwrap();
+        },
+        CoreMessage::AutoLock => {
+          if !state.locked && !state.locking && state.autolock {
+            handles.lockscreen.send(LockMessage::Lock).unwrap();
+          }
+        },
+        CoreMessage::SetAutoLock(value) => {
+          state.autolock = value;
         }
       }
     }

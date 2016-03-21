@@ -23,12 +23,15 @@ pub enum CoreMessage {
   SuspendOnLid(bool),
   Suspending,
   Suspended,
-  QueryFlag(CoreFlag, Sender<bool>)
+  QueryFlag(CoreFlag, Sender<bool>),
+  AutoLock,
+  SetAutoLock(bool)
 }
 
 #[derive(Debug)]
 pub enum CoreFlag {
-  SuspendOnLid
+  SuspendOnLid,
   //Locking, TODO: Add dbus api
-  //Locked TODO: Add dbus api
+  //Locked,
+  AutoLock
 }

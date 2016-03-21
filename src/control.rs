@@ -41,6 +41,22 @@ fn exec() -> Result<(), Error> {
           println!("ignore")
         }
       },
+      "autolock" => if args.len() > 2 {
+        let b: &str = &args[2];
+        match b {
+          "on" => try!(basic_call(&c, method("SetAutoLock").append1(true))),
+          "off" => try!(basic_call(&c, method("SetAutoLock").append1(false))),
+          _ => usage()
+        }
+      } else {
+        let r = try!(call(&c, method("GetAutoLock")));
+        if r.get1().unwrap() {
+          println!("on")
+        } else {
+          println!("off")
+        }
+      },
+      "perform_autolock" => try!(basic_call(&c, method("AutoLock"))),
       _ => usage()
     };
   } else {

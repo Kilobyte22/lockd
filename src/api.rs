@@ -37,6 +37,22 @@ pub fn actor_api(core: Sender<CoreMessage>) {
           core.send(CoreMessage::Exit).unwrap();
           Ok(vec![m.method_return()])
         })
+      ).add_m(
+        f.method("AutoLock", |m, _, _| {
+          core.send(CoreMessage::AutoLock).unwrap();
+          Ok(vec![m.method_return()])
+        })
+      ).add_m(
+        f.method("SetAutoLock", |m, _, _| {
+          core.send(CoreMessage::SetAutoLock(m.get1().unwrap())).unwrap();
+          Ok(vec![m.method_return()])
+        }).inarg::<bool, _>("value")
+      ).add_m(
+          f.method("GetAutoLock", |m, _, _| {
+            let (tx, rx) = mpsc::channel::<bool>();
+            core.send(CoreMessage::QueryFlag(CoreFlag::AutoLock, tx)).unwrap();
+            Ok(vec![m.method_return().append1(rx.recv().unwrap())])
+          }).outarg::<bool, _>("value")
       )
     )
   );

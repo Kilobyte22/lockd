@@ -13,9 +13,15 @@
 
 Make sure lockd starts together with your i3:
 ```
-exec_once lockd
+execonce lockd
 ```
 
 To lock your screen manually, do not start i3lock manually but use `lockctl lock` to ensure the internal state of lockd is correct.
 
 To prevent your system from suspending when you close the lid, run `lockctl lidaction ignore`. To revert use `lockctl lidaction suspend`. You can query the status at any time using `lockctl lidaction`
+
+### Automatic Screen Locking
+
+set up xautolock: `xautolock -locker 'lockctl perform_autolock'`
+
+To temporarily turn off automatic screen locking: `lockctl autolock off`. Once that has been run, `lockctl perform_autolock` turns onto a no-op

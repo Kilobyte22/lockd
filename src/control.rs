@@ -92,6 +92,8 @@ Commands:
 lock - instantly locks the screen
 unlock - instantly unlocks the screen
 lidaction [suspend|ignore] - gets or sets the lid action
+autolock [on|off] - gets or sets the autolock state
+perform_autolock - locks the screen if autolock is enabled
 exit - exit the daemon cleanly"#;
   println!("Usage {} <command> [args...]", env::args().next().unwrap());
   println!("{}", usage);

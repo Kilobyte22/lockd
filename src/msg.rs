@@ -32,10 +32,24 @@ pub enum CoreMessage {
 impl fmt::Debug for CoreMessage {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
+            CoreMessage::Lock => write!(f, "Lock"),
+            CoreMessage::Unlock => write!(f, "Unlock"),
+            CoreMessage::Locked => write!(f, "Locked"),
+            CoreMessage::Unlocked => write!(f, "Unlocked"),
+            CoreMessage::Exit => write!(f, "Exit"),
+            CoreMessage::AutoLock => write!(f, "AutoLock"),
+            CoreMessage::Suspending => write!(f, "Suspending"),
+            CoreMessage::Suspended => write!(f, "Suspended"),
+
+            CoreMessage::SuspendOnLid(flag) => {
+                write!(f, "SuspendOnLid({:?})", flag)
+            },
             CoreMessage::QueryFlag(ref flag, _) => {
                 write!(f, "QueryFlag({:?})", flag)
             },
-            ref otherwise => otherwise.fmt(f)
+            CoreMessage::SetAutoLock(flag) => {
+                write!(f, "SetAutoLock({:?})", flag)
+            },
         }
     }
 }

@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::mpsc::Sender;
 
 pub enum LockMessage {
@@ -12,7 +13,7 @@ pub enum InhibitMessage {
   ReleaseDelay
 }
 
-#[derive(Debug)]
+//#[derive(Debug)]
 pub enum CoreMessage {
   Lock,
   Unlock,
@@ -26,6 +27,17 @@ pub enum CoreMessage {
   QueryFlag(CoreFlag, Sender<bool>),
   AutoLock,
   SetAutoLock(bool)
+}
+
+impl fmt::Debug for CoreMessage {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            CoreMessage::QueryFlag(ref flag, _) => {
+                write!(f, "QueryFlag({:?})", flag)
+            },
+            ref otherwise => otherwise.fmt(f)
+        }
+    }
 }
 
 #[derive(Debug)]

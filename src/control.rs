@@ -22,6 +22,8 @@ fn exec() -> Result<(), Error> {
 
   if args.len() > 1 {
     let a: &str = &args[1];
+    let r = try!(call(&c, method("GetSuspendOnLid")));
+    let lidaction: bool = r.get1().unwrap();
     match a {
       "lock" => try!(basic_call(&c, method("Lock"))),
       "unlock" => try!(basic_call(&c, method("Unlock"))),
@@ -31,11 +33,11 @@ fn exec() -> Result<(), Error> {
         match b {
           "suspend" => try!(basic_call(&c, method("SetSuspendOnLid").append1(true))),
           "ignore" => try!(basic_call(&c, method("SetSuspendOnLid").append1(false))),
+          "toggle" => try!(basic_call(&c, method("SetSuspendOnLid").append1(!lidaction))),
           _ => usage()
         }
       } else {
-        let r = try!(call(&c, method("GetSuspendOnLid")));
-        if r.get1().unwrap() {
+        if lidaction {
           println!("suspend")
         } else {
           println!("ignore")
@@ -88,10 +90,10 @@ fn method(name: &str) -> Message {
 fn usage() {
   let usage = r#"
 Commands:
-  
+
 lock - instantly locks the screen
 unlock - instantly unlocks the screen
-lidaction [suspend|ignore] - gets or sets the lid action
+lidaction [suspend|ignore|toggle] - gets or sets the lid action
 exit - exit the daemon cleanly"#;
   println!("Usage {} <command> [args...]", env::args().next().unwrap());
   println!("{}", usage);

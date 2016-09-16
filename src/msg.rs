@@ -3,7 +3,8 @@ use std::sync::mpsc::Sender;
 
 pub enum LockMessage {
   Lock,
-  Unlock
+  Unlock,
+  SetLockscreen(String, Vec<String>)
 }
 
 pub enum InhibitMessage {
@@ -19,7 +20,7 @@ pub enum CoreMessage {
   Unlock,
   Locked,
   Unlocked,
-  // ReloadConfig,
+  ReloadConfig,
   Exit,
   SuspendOnLid(bool),
   Suspending,
@@ -40,6 +41,7 @@ impl fmt::Debug for CoreMessage {
             CoreMessage::AutoLock => write!(f, "AutoLock"),
             CoreMessage::Suspending => write!(f, "Suspending"),
             CoreMessage::Suspended => write!(f, "Suspended"),
+            CoreMessage::ReloadConfig => write!(f, "ReloadConfig"),
 
             CoreMessage::SuspendOnLid(flag) => {
                 write!(f, "SuspendOnLid({:?})", flag)

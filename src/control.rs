@@ -57,6 +57,7 @@ fn exec() -> Result<(), Error> {
         }
       },
       "perform_autolock" => try!(basic_call(&c, method("AutoLock"))),
+      "reload" => try!(basic_call(&c, method("Reload"))),
       _ => usage()
     };
   } else {

@@ -1,61 +1,114 @@
-use toml::{Parser, Value, ParserError};
+use config_parser as cfg;
 use std::error::Error;
 use std::fmt;
+use std::fmt::Debug;
 use std::result::Result;
+use std::fs::File;
 
-struct Config {
-    lock_command: String
+pub const DEFAULT: &'static str = include_str!("../default.cfg");
+
+pub struct Config {
+        lock_command: String,
+        lock_params: Vec<String>
 }
 
 impl Config {
 
-  fn parse(config: String) -> Result<Config, ConfigError> {
-    let mut parser = Parser::new(&config);
-    match parser.parse() {
-      Some(data) => {
+    pub fn parse(config: String) -> Result<Config, ConfigError> {
 
-        Ok(Config { lock_command: "i3lock".to_string() })
-      },
-      None => ConfigError::ParseError(parser.errors.first().unwrap())
+        let mut ret = Config {
+            lock_command: format!("i3lock"),
+            lock_params: vec![format!("-c"), format!("000000"), format!("--nofork")]
+        };
+
+        let c = match cfg::parse_string(config) {
+            Ok(x) => x,
+            Err(x) => return Err(ConfigError::parse(x))
+        };
+
+        match c.matching("lock_cmd").next() {
+            Some(cmd) => {
+                if cmd.len() < 1 {
+                    return Err(ConfigError::option("lock_cmd", "You have to specify a command and optionally parameters"));
+                }
+                ret.lock_command = cmd.get(0).to_string();
+                ret.lock_params = Vec::with_capacity(cmd.len() - 1);
+                for i in 1..cmd.len() {
+                    println!("Getting option {} of {}", i, cmd.len());
+                    ret.lock_params.push(cmd.get(i).to_string());
+                }
+            },
+            None => {}
+        }
+
+        Ok(ret)
     }
-  }
 
-  fn get_lock_command(&self) -> String {
-    return self.lock_command.clone();
-  }
+    pub fn get_lock_command(&self) -> (&str, &[String]) {
+        (&self.lock_command, &self.lock_params)
+    }
 }
 
 #[derive(Debug)]
-enum ConfigError {
-  ParseError(ParserError),
-  OptionError(String, String)
+pub enum ErrorType {
+    ParseError(cfg::ParseError),
+    OptionError(String, String)
+}
+
+#[derive(Debug)]
+pub struct ConfigError {
+    error_type: ErrorType,
+    description: String
+}
+
+impl ConfigError {
+    fn new(error_type: ErrorType) -> ConfigError {
+        let desc = match &error_type {
+            &ErrorType::ParseError(ref error) => {
+                format!("Error while parsing: {:?}", error)
+            },
+            &ErrorType::OptionError(ref option, ref error) => {
+                format!("Error in option {}: {}", option, error)
+            }
+        };
+
+        ConfigError {
+            error_type: error_type,
+            description: desc
+        }
+    }
+
+    fn parse(err: cfg::ParseError) -> ConfigError {
+        ConfigError::new(ErrorType::ParseError(err))
+    }
+
+    fn option(option: &str, error: &str) -> ConfigError {
+        ConfigError::new(ErrorType::OptionError(option.to_string(), error.to_string()))
+    }
 }
 
 impl Error for ConfigError {
-  fn description(&self) -> &str {
-    match *self {
-      ConfigError::ParseError(error) => format!("Error while parsing: {}", error.description),
-      ConfigError::OptionError(option, error) => format!("Error in option {}: {}", option, error)
+    fn description(&self) -> &str {
+        &self.description
     }
-  }
  
-  fn cause(&self) -> Option<&Error> {
-    match *self {
-      ConfigError::ParseError(error) => Some(&error),
-      ConfigError::OptionError(..) => None
+    fn cause(&self) -> Option<&Error> {
+        match &self.error_type {
+            &ErrorType::ParseError(ref error) => None, //Some(&error),
+            &ErrorType::OptionError(..) => None
+        }
     }
-  }
 }
 
 impl fmt::Display for ConfigError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    match *self {
-      ConfigError::ParseError(error) => { 
-        try!(write!(f, "Parse Error: "));
-        error.fmt(f)
-      },
-      ConfigError::OptionError(..) =>
-        write!(f, "{}", self.description())
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self.error_type {
+            &ErrorType::ParseError(ref error) => { 
+                try!(write!(f, "Parse Error: "));
+                error.fmt(f)
+            },
+            &ErrorType::OptionError(..) =>
+                write!(f, "{}", self.description())
+        }
     }
-  }
 }

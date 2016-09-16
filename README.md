@@ -2,7 +2,7 @@
 
 **Note:** This program is not intended for the average user using a desktop environment like Plasma, GNOME or Unity. This is intended for users of standalone window managers like i3, xmonad or awesome.
 
-**WIP:** Please note that currently the lock command is hardcoded to `i3lock -c 000000 --nofork`
+lockd will use a configuration file at $HOME/.config/lockd/main.cfg. This will be overridable using a command line switch in the future
 
 ## Features
 * Automatically locks screen when system gets suspended

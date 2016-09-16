@@ -3,7 +3,7 @@
 all:
 	cargo build --release
 
-install: all
+install:
 	install target/release/lockd /usr/local/bin/lockd
 	install target/release/lockctl /usr/local/bin/lockctl
 	install lockctl.1 /usr/local/man/man1/lockctl.1

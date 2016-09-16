@@ -13,7 +13,7 @@ lockd will use a configuration file at $HOME/.config/lockd/main.cfg. This will b
 
 Make sure lockd starts together with your i3:
 ```
-execonce lockd
+exec lockd
 ```
 
 To lock your screen manually, do not start i3lock manually but use `lockctl lock` to ensure the internal state of lockd is correct.

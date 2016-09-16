@@ -1,7 +1,11 @@
 [package]
 name = "lockd"
 version = "0.1.0"
-authors = ["Kilobyte22 <stiepen22@gmx.de>"]
+authors = [
+	"Kilobyte22 <stiepen22@gmx.de>",
+	"Dean Davis <dean4devil@paranoidlabs.org>"
+]
+build = "build.rs"
 
 [dependencies]
 dbus = "0.3"

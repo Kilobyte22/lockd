@@ -13,6 +13,11 @@ mod inhibit;
 mod react;
 mod api;
 
+macro_rules! dbgprintln {
+    ($fmt:expr) => (if cfg!(debug){println!($fmt)});
+    ($fmt:expr, $($arg:tt)*) => (if cfg!(debug){println!($fmt, $($arg)*)});
+}
+
 use msg::{LockMessage, InhibitMessage, CoreMessage, CoreFlag};
 
 struct ActorMainHandles {
@@ -70,7 +75,7 @@ fn actor_main(handles: ActorMainHandles) {
     };
     handles.inhibitors.send(InhibitMessage::CreateDelay).unwrap();
     for message in handles.inbox {
-      println!("Received message in core: {:?}", message);
+      dbgprintln!("Received message in core: {:?}", message);
       match message {
         CoreMessage::Lock => 
           if !(state.locked || state.locking) {

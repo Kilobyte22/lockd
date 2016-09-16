@@ -7,9 +7,17 @@ use std::fs::File;
 
 pub const DEFAULT: &'static str = include_str!("../default.cfg");
 
+pub enum DefaultValue {
+    On,
+    Off,
+    Remember
+}
+
 pub struct Config {
-        lock_command: String,
-        lock_params: Vec<String>
+    lock_command: String,
+    lock_params: Vec<String>,
+    default_autolock: DefaultValue,
+    default_suspend_on_lid: DefaultValue
 }
 
 impl Config {
@@ -18,7 +26,9 @@ impl Config {
 
         let mut ret = Config {
             lock_command: format!("i3lock"),
-            lock_params: vec![format!("-c"), format!("000000"), format!("--nofork")]
+            lock_params: vec![format!("-c"), format!("000000"), format!("--nofork")],
+            default_autolock: On,
+            default_suspend_on_lid: On
         };
 
         let c = match cfg::parse_string(config) {
@@ -36,6 +46,33 @@ impl Config {
                 for i in 1..cmd.len() {
                     println!("Getting option {} of {}", i, cmd.len());
                     ret.lock_params.push(cmd.get(i).to_string());
+                }
+            },
+            None => {}
+        }
+
+        match c.matching("default").next() {
+            Some(default) => {
+                match default.matching("autolock").next() {
+                    Some(autolock) => {
+                        ret.autolock = match autolock.get_opt(0) {
+                            Some("on") => DefaultValue::On,
+                            Some("off") => DefaultValue::Off,
+                            Some("remember") => DefaultValue::Remember,
+                            _ => DefaultValue::On
+                        }
+                    },
+                    None => {}
+                }
+
+                match default.matching("lidaction").next() {
+                    Some(lidaction) => {
+                        ret.default_suspend_on_lid = match lidaction.get_opt(0) {
+                            Some("suspend") => DefaultValue::On,
+                            Some("ignore") => DefaultValue::Off,
+                            Some("remember") => DefaultValue::Remember
+                        }
+                    }
                 }
             },
             None => {}

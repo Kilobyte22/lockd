@@ -2,32 +2,37 @@ use std::fmt;
 use std::sync::mpsc::Sender;
 
 pub enum LockMessage {
-  Lock,
-  Unlock,
-  SetLockscreen(String, Vec<String>)
+    Lock,
+    Unlock,
+    SetLockscreen(String, Vec<String>)
 }
 
 pub enum InhibitMessage {
-  CreateBlock,
-  ReleaseBlock,
-  CreateDelay,
-  ReleaseDelay
+    CreateBlock,
+    ReleaseBlock,
+    CreateDelay,
+    ReleaseDelay
 }
 
 //#[derive(Debug)]
 pub enum CoreMessage {
-  Lock,
-  Unlock,
-  Locked,
-  Unlocked,
-  ReloadConfig,
-  Exit,
-  SuspendOnLid(bool),
-  Suspending,
-  Suspended,
-  QueryFlag(CoreFlag, Sender<bool>),
-  AutoLock,
-  SetAutoLock(bool)
+    Lock,
+    Unlock,
+    Locked,
+    Unlocked,
+    ReloadConfig,
+    Exit,
+    SuspendOnLid(bool),
+    Suspending,
+    Suspended,
+    QueryFlag(CoreFlag, Sender<bool>),
+    AutoLock,
+    SetAutoLock(bool)
+}
+
+pub enum DPMSMessage {
+    SetValues((u16, u16, u16)),
+    GetValues(Sender<(u16, u16, u16)>)
 }
 
 impl fmt::Debug for CoreMessage {

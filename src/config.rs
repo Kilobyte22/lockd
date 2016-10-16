@@ -17,7 +17,8 @@ pub struct Config {
     lock_command: String,
     lock_params: Vec<String>,
     default_autolock: DefaultValue,
-    default_suspend_on_lid: DefaultValue
+    default_suspend_on_lid: DefaultValue,
+    dpms_values: Option<(u16, u16, u16)>
 }
 
 impl Config {
@@ -27,8 +28,9 @@ impl Config {
         let mut ret = Config {
             lock_command: format!("i3lock"),
             lock_params: vec![format!("-c"), format!("000000"), format!("--nofork")],
-            default_autolock: On,
-            default_suspend_on_lid: On
+            default_autolock: DefaultValue::On,
+            default_suspend_on_lid: DefaultValue::On,
+            dpms_values: None
         };
 
         let c = match cfg::parse_string(config) {
@@ -55,7 +57,7 @@ impl Config {
             Some(default) => {
                 match default.matching("autolock").next() {
                     Some(autolock) => {
-                        ret.autolock = match autolock.get_opt(0) {
+                        ret.default_autolock = match autolock.get_opt(0) {
                             Some("on") => DefaultValue::On,
                             Some("off") => DefaultValue::Off,
                             Some("remember") => DefaultValue::Remember,
@@ -70,10 +72,36 @@ impl Config {
                         ret.default_suspend_on_lid = match lidaction.get_opt(0) {
                             Some("suspend") => DefaultValue::On,
                             Some("ignore") => DefaultValue::Off,
-                            Some("remember") => DefaultValue::Remember
+                            Some("remember") => DefaultValue::Remember,
+                            _ => DefaultValue::On
                         }
-                    }
+                    },
+                    None => {}
                 }
+            },
+            None => {}
+        }
+
+        match c.matching("dpms").next() {
+            Some(dpms) => {
+                if dpms.len() != 3 {
+                    return Err(ConfigError::option("dpms", "The dpms option requires exactly two parameters"));
+                }
+
+                let mut values = (0u16, 0u16, 0u16);
+                values.0 = match dpms.get(0).parse() {
+                    Ok(v) => v,
+                    Err(_) => return Err(ConfigError::option("dpms", "the dpms option requires 3 valid unsigned 16 bit integers"))
+                };
+                values.1 = match dpms.get(1).parse() {
+                    Ok(v) => v,
+                    Err(_) => return Err(ConfigError::option("dpms", "the dpms option requires 3 valid unsigned 16 bit integers"))
+                };
+                values.2 = match dpms.get(2).parse() {
+                    Ok(v) => v,
+                    Err(_) => return Err(ConfigError::option("dpms", "the dpms option requires 3 valid unsigned 16 bit integers"))
+                };
+                ret.dpms_values = Some(values);
             },
             None => {}
         }
@@ -83,6 +111,10 @@ impl Config {
 
     pub fn get_lock_command(&self) -> (&str, &[String]) {
         (&self.lock_command, &self.lock_params)
+    }
+
+    pub fn get_dpms_values(&self) -> Option<(u16, u16, u16)> {
+        self.dpms_values
     }
 }
 

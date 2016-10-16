@@ -6,25 +6,26 @@ use std::sync::mpsc;
 use std::sync::mpsc::{Sender, Receiver};
 use std::{thread, fs, path, env};
 use std::io::{Result as IOResult, Write, Read};
+use msg::{LockMessage, InhibitMessage, CoreMessage, CoreFlag, DPMSMessage};
 
-//mod config;
 mod msg;
 mod lockscreen;
 mod inhibit;
 mod react;
 mod api;
 mod config;
+mod ffi;
+mod dpms;
 
 macro_rules! dbgprintln {
     ($fmt:expr) => (if cfg!(debug){println!($fmt)});
     ($fmt:expr, $($arg:tt)*) => (if cfg!(debug){println!($fmt, $($arg)*)});
 }
 
-use msg::{LockMessage, InhibitMessage, CoreMessage, CoreFlag};
-
 struct ActorMainHandles {
     lockscreen: Sender<LockMessage>,
-    inhibitors: Sender<InhibitMessage>
+    inhibitors: Sender<InhibitMessage>,
+    dpms: Sender<DPMSMessage>
 }
 
 struct State {
@@ -32,13 +33,16 @@ struct State {
     inhibit_lid: bool,
     locking: bool,
     should_exit: bool,
-    autolock: bool
+    autolock: bool,
+    dpms_values: Option<(u16, u16, u16)>,
+    dpms_enabled: bool
 }
 
 fn main() {
     let (core_send, core_recv) = mpsc::channel();
     let (inh_send, inh_recv) = mpsc::channel();
     let (lock_send, lock_recv) = mpsc::channel();
+    let (dpms_send, dpms_recv) = mpsc::channel();
 
     let core = core_send.clone();
     thread::spawn(||{
@@ -56,10 +60,15 @@ fn main() {
     thread::spawn(||{
         api::actor_api(core);
     });
+    let core = core_send.clone();
+    thread::spawn(||{
+        dpms::actor_dpms(core, dpms_recv);
+    });
 
     let handles = ActorMainHandles {
         lockscreen: lock_send,
-        inhibitors: inh_send
+        inhibitors: inh_send,
+        dpms: dpms_send
     };
 
     actor_main(handles, core_recv);
@@ -148,11 +157,23 @@ fn load_config() -> Option<config::Config> {
 
 }
 
-fn apply_config(config: config::Config, handles: &ActorMainHandles) {
+fn apply_config(config: config::Config, handles: &ActorMainHandles, state: &mut State) {
     let cmd = config.get_lock_command();
     let lcmd = cmd.0;
     let lparam = cmd.1.iter().map(|s| s.to_string()).collect();
     handles.lockscreen.send(LockMessage::SetLockscreen(lcmd.to_string(), lparam));
+    match config.get_dpms_values() {
+        Some(values) => {
+            state.dpms_values = Some(values);
+            if state.dpms_enabled {
+                handles.dpms.send(DPMSMessage::SetValues(values));
+            }
+        },
+        None => {
+            state.dpms_values = None;
+            state.dpms_enabled = true;
+        }
+    }
 }
 
 fn actor_main(handles: ActorMainHandles, inbox: Receiver<CoreMessage>) {
@@ -161,12 +182,14 @@ fn actor_main(handles: ActorMainHandles, inbox: Receiver<CoreMessage>) {
             inhibit_lid: false,
             locking: false,
             should_exit: false,
-            autolock: true
+            autolock: true,
+            dpms_values: None,
+            dpms_enabled: true
     };
     handles.inhibitors.send(InhibitMessage::CreateDelay).unwrap();
     {
         let cfg = load_config();
-        apply_config(cfg.expect("Could not load configuration"), &handles);
+        apply_config(cfg.expect("Could not load configuration"), &handles, &mut state);
     }
     for message in inbox {
         println!("Received message in core: {:?}", message);
@@ -185,12 +208,22 @@ fn actor_main(handles: ActorMainHandles, inbox: Receiver<CoreMessage>) {
                 state.locked = true;
                 state.locking = false;
                 handles.inhibitors.send(InhibitMessage::ReleaseDelay).unwrap();
+                if let Some(values) = state.dpms_values {
+                    handles.dpms.send(DPMSMessage::SetValues(values));
+                    state.dpms_enabled = true;
+                }
             },
             CoreMessage::Unlocked => {
                 state.locked = false;
                 state.locking = false;
+                if let Some(_) = state.dpms_values {
+                    if !state.autolock {
+                        state.dpms_enabled = false;
+                        handles.dpms.send(DPMSMessage::SetValues((0, 0, 0)));
+                    }
+                }
                 if state.should_exit {
-                        std::process::exit(0);
+                    std::process::exit(0);
                 }
                 handles.inhibitors.send(InhibitMessage::CreateDelay).unwrap();
             },
@@ -241,6 +274,15 @@ fn actor_main(handles: ActorMainHandles, inbox: Receiver<CoreMessage>) {
             },
             CoreMessage::SetAutoLock(value) => {
                 state.autolock = value;
+                if let Some(values) = state.dpms_values {
+                    if value {
+                        state.dpms_enabled = true;
+                        handles.dpms.send(DPMSMessage::SetValues(values));
+                    } else {
+                        state.dpms_enabled = false;
+                        handles.dpms.send(DPMSMessage::SetValues((0, 0, 0)));
+                    }
+                }
             },
             CoreMessage::ReloadConfig => {
                 let config = match load_config() {
@@ -250,7 +292,7 @@ fn actor_main(handles: ActorMainHandles, inbox: Receiver<CoreMessage>) {
                         continue;
                     }
                 };
-                apply_config(config, &handles);
+                apply_config(config, &handles, &mut state);
             }
 
         }

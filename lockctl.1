@@ -1,0 +1,45 @@
+.TH LOCKCTL 1 2016-03-21 "lockd 0.1" "User Commands"
+.SH NAME
+lockctl \- control lockd
+
+.SH SYNOPSIS
+.B lockctl
+command
+
+.SH DESCRIPTION
+.B lockctl
+controls \fBlockd\fR, which is a background service designed to run as part of a X or Wayland session.
+
+It can do so using various commands which will then be executed via the D-Bus
+
+.SH OPTIONS
+Following Commands are known:
+
+.I lock
+\- locks the screen instantly
+
+.I unlock
+\- unlocks the screen instantly
+
+.I exit
+\- exits the daemon
+
+.I lidaction
+\- displays what happens when you close the lid
+
+.I lidaction
+(\fIignore\fR|\fIsuspend\fR)
+\- changes what happens when you close the lid
+
+.I autolock
+\- displays if automatic locking is enabled
+
+.I autolock
+(\fIon\fR|\fIoff\fR)
+\- sets autolock mode. This only affects the perform_autolock sub command, not lock on suspend.
+
+.I perform_autolock
+\- locks the screen if autolock is enabled
+
+.SH "SEE ALSO"
+lockd(1)

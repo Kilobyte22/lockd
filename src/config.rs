@@ -14,10 +14,12 @@ pub enum DefaultValue {
 }
 
 pub struct Config {
-    lock_command: String,
-    lock_params: Vec<String>,
-    default_autolock: DefaultValue,
-    default_suspend_on_lid: DefaultValue
+    pub lock_command: String,
+    pub lock_params: Vec<String>,
+    pub default_autolock: DefaultValue,
+    pub default_suspend_on_lid: DefaultValue,
+    pub pre_lock: Option<(String, Vec<String>)>,
+    pub post_unlock: Option<(String, Vec<String>)>
 }
 
 impl Config {
@@ -27,8 +29,10 @@ impl Config {
         let mut ret = Config {
             lock_command: format!("i3lock"),
             lock_params: vec![format!("-c"), format!("000000"), format!("--nofork")],
-            default_autolock: On,
-            default_suspend_on_lid: On
+            default_autolock: DefaultValue::On,
+            default_suspend_on_lid: DefaultValue::On,
+            pre_lock: None,
+            post_unlock: None
         };
 
         let c = match cfg::parse_string(config) {
@@ -51,27 +55,46 @@ impl Config {
             None => {}
         }
 
+        if let Some(command) = c.matching("command").next() {
+            if let Some(pre_lock) = command.matching("pre_lock").next() {
+                let cmd = pre_lock.get_opt(0).map(|o| o.to_string());
+                let mut args = Vec::new();
+                for i in 1..pre_lock.len() {
+                    args.push(pre_lock.get(i).to_string());
+                };
+                if let Some(cmd) = cmd {
+                    ret.pre_lock = Some((cmd, args));
+                }
+            }
+            if let Some(post_unlock) = command.matching("post_unlock").next() {
+                let cmd = post_unlock.get_opt(0).map(|o| o.to_string());
+                let mut args = Vec::new();
+                for i in 1..post_unlock.len() {
+                    args.push(post_unlock.get(i).to_string());
+                };
+                if let Some(cmd) = cmd {
+                    ret.post_unlock = Some((cmd, args));
+                }
+            }
+        }
+
         match c.matching("default").next() {
             Some(default) => {
-                match default.matching("autolock").next() {
-                    Some(autolock) => {
-                        ret.autolock = match autolock.get_opt(0) {
-                            Some("on") => DefaultValue::On,
-                            Some("off") => DefaultValue::Off,
-                            Some("remember") => DefaultValue::Remember,
-                            _ => DefaultValue::On
-                        }
-                    },
-                    None => {}
+                if let Some(autolock) = default.matching("autolock").next() {
+                    ret.default_autolock = match autolock.get_opt(0) {
+                        Some("on") => DefaultValue::On,
+                        Some("off") => DefaultValue::Off,
+                        Some("remember") => DefaultValue::Remember,
+                        _ => DefaultValue::On
+                    }
                 }
 
-                match default.matching("lidaction").next() {
-                    Some(lidaction) => {
-                        ret.default_suspend_on_lid = match lidaction.get_opt(0) {
-                            Some("suspend") => DefaultValue::On,
-                            Some("ignore") => DefaultValue::Off,
-                            Some("remember") => DefaultValue::Remember
-                        }
+                if let Some(lidaction) = default.matching("lidaction").next()  {
+                    ret.default_suspend_on_lid = match lidaction.get_opt(0) {
+                        Some("suspend") => DefaultValue::On,
+                        Some("ignore") => DefaultValue::Off,
+                        Some("remember") => DefaultValue::Remember,
+                        _ => DefaultValue::On
                     }
                 }
             },

@@ -4,7 +4,7 @@ extern crate dbus;
 
 use std::sync::mpsc;
 use std::sync::mpsc::{Sender, Receiver};
-use std::{thread, fs, path, env};
+use std::{thread, fs, path, env, process};
 use std::io::{Result as IOResult, Write, Read};
 
 //mod config;
@@ -32,7 +32,83 @@ struct State {
     inhibit_lid: bool,
     locking: bool,
     should_exit: bool,
-    autolock: bool
+    autolock: bool,
+    pre_lock: Option<(String, Vec<String>)>,
+    post_unlock: Option<(String, Vec<String>)>
+}
+
+impl Default for State {
+    fn default() -> State {
+        State {
+            locked: false,
+            inhibit_lid: false,
+            locking: false,
+            should_exit: false,
+            autolock: true,
+            pre_lock: None,
+            post_unlock: None
+        }
+    }
+}
+
+impl State {
+    fn write<W: Write>(&self, w: &mut W) -> IOResult<()> {
+        write!(w, "autolock {:?};\n", self.autolock)?;
+        write!(w, "inhibit_lid {:?};\n", self.inhibit_lid)?;        
+        Ok(())
+    }
+
+    fn read(p: &path::Path) -> IOResult<State> {
+        if p.exists() {
+            match config_parser::parse_file(fs::File::open(p)?) {
+                Ok(loaded) => {
+                    let mut state = State::default();
+                    if let Some(autolock) = loaded.matching("autolock").next() {
+                        if let Some(value) = autolock.get_opt(0) {
+                            if let Ok(value) = value.parse() {
+                                state.autolock = value;
+                            }
+                        }
+                    }
+                    if let Some(inhibit_lid) = loaded.matching("inhibit_lid").next() {
+                        if let Some(value) = inhibit_lid.get_opt(0) {
+                            if let Ok(value) = value.parse() {
+                                state.inhibit_lid = value;
+                            }
+                        }
+                    }
+                    Ok(state)
+                },
+                Err(e) => {
+                    eprintln!("Could not load state: {:?}", e);
+                    Ok(State::default())
+                }
+            }
+        } else {
+            Ok(State::default())
+        }
+    }
+
+    fn load(&mut self, p: &path::Path, c: &config::Config) -> IOResult<()> {
+        let loaded_state = State::read(p)?;
+        self.autolock = match c.default_autolock {
+            config::DefaultValue::Remember => {
+                loaded_state.autolock
+            },
+            config::DefaultValue::On => true,
+            config::DefaultValue::Off => false
+        };
+
+        self.inhibit_lid = match c.default_suspend_on_lid {
+            config::DefaultValue::Remember => {
+                 loaded_state.inhibit_lid
+            },
+            config::DefaultValue::On => false,
+            config::DefaultValue::Off => true
+        };
+        
+        Ok(())
+    }
 }
 
 fn main() {
@@ -95,6 +171,32 @@ fn write_file(path: &path::Path, content: &str) -> IOResult<()> {
     Ok(())
 }
 
+fn state_path() -> String {
+    let file = match env::var("HOME") {
+        Ok(home) => {
+            format!("{}/.local/share/lockd/state", home)
+        },
+        Err(e) => {
+            println!("Warning: Could not get $HOME: {}, defaulting to config file /tmp/lockd_state", e);
+            "/tmp/lockd_state".to_string()
+        }
+    };
+
+    {
+        let path = path::Path::new(&file);
+
+        match fs::metadata(path) {
+            Ok(md) => (),
+            // File does not exist or we lack permission.
+            Err(_) => {
+                create_path(path.parent().expect("Uhh config file in root? wat."));
+            }
+        };
+    }
+
+    file
+}
+
 fn load_config() -> Option<config::Config> {
     let mut pathstr = String::new();
     let path = match env::var("HOME") {
@@ -148,11 +250,22 @@ fn load_config() -> Option<config::Config> {
 
 }
 
-fn apply_config(config: config::Config, handles: &ActorMainHandles) {
+fn apply_config(config: &config::Config, handles: &ActorMainHandles, state: &mut State) {
     let cmd = config.get_lock_command();
     let lcmd = cmd.0;
     let lparam = cmd.1.iter().map(|s| s.to_string()).collect();
-    handles.lockscreen.send(LockMessage::SetLockscreen(lcmd.to_string(), lparam));
+    handles.lockscreen.send(LockMessage::SetLockscreen(lcmd.to_string(), lparam)).unwrap();
+    state.pre_lock = config.pre_lock.clone();
+    state.post_unlock = config.post_unlock.clone();
+}
+
+fn run_command(cmd: &Option<(String, Vec<String>)>) {
+    if let &Some(ref cmd) = cmd {
+        match process::Command::new(&cmd.0).args(&cmd.1).spawn() {
+            Ok(_) => (),
+            Err(e) => println!("Failed to start {}: {}", cmd.0, e)
+        }
+    }
 }
 
 fn actor_main(handles: ActorMainHandles, inbox: Receiver<CoreMessage>) {
@@ -161,18 +274,23 @@ fn actor_main(handles: ActorMainHandles, inbox: Receiver<CoreMessage>) {
             inhibit_lid: false,
             locking: false,
             should_exit: false,
-            autolock: true
+            autolock: true,
+            pre_lock: None,
+            post_unlock: None
     };
     handles.inhibitors.send(InhibitMessage::CreateDelay).unwrap();
+    let state_path = state_path();
     {
-        let cfg = load_config();
-        apply_config(cfg.expect("Could not load configuration"), &handles);
+        let cfg = load_config().expect("Could not load configuration");
+        apply_config(&cfg, &handles, &mut state);
+        state.load(path::Path::new(&state_path), &cfg);
     }
     for message in inbox {
         println!("Received message in core: {:?}", message);
         match message {
             CoreMessage::Lock => 
                 if !(state.locked || state.locking) {
+                    run_command(&state.pre_lock);
                     handles.lockscreen.send(LockMessage::Lock).unwrap();
                     state.locking = true;
                 },
@@ -193,6 +311,7 @@ fn actor_main(handles: ActorMainHandles, inbox: Receiver<CoreMessage>) {
                         std::process::exit(0);
                 }
                 handles.inhibitors.send(InhibitMessage::CreateDelay).unwrap();
+                run_command(&state.post_unlock);
             },
             CoreMessage::Exit => {
                 if state.locked {
@@ -213,6 +332,7 @@ fn actor_main(handles: ActorMainHandles, inbox: Receiver<CoreMessage>) {
                             handles.inhibitors.send(InhibitMessage::ReleaseBlock).unwrap();
                     }
                 }
+                state.write(&mut fs::File::create(&state_path).unwrap()).unwrap();
             },
             CoreMessage::Suspending => {
                 if !state.locked {
@@ -241,6 +361,7 @@ fn actor_main(handles: ActorMainHandles, inbox: Receiver<CoreMessage>) {
             },
             CoreMessage::SetAutoLock(value) => {
                 state.autolock = value;
+                state.write(&mut fs::File::create(&state_path).unwrap()).unwrap();
             },
             CoreMessage::ReloadConfig => {
                 let config = match load_config() {
@@ -250,7 +371,7 @@ fn actor_main(handles: ActorMainHandles, inbox: Receiver<CoreMessage>) {
                         continue;
                     }
                 };
-                apply_config(config, &handles);
+                apply_config(&config, &handles, &mut state);
             }
 
         }

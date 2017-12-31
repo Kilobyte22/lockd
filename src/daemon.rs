@@ -97,6 +97,16 @@ fn write_file(path: &path::Path, content: &str) -> IOResult<()> {
 
 fn load_config() -> Option<config::Config> {
     let mut pathstr = String::new();
+    let path = match env::var("XDG_CONFIG_HOME").or(env::var("HOME")) {
+        Some(path) => {
+            pathstr = format!("{}/lockd/main.cfg");
+            path::Path::new(&pathstr);
+        },
+        Err(e) => {
+            panic!(format!("Your system is broken and does not have a working $HOME. PLZ FIX. Additional details: {}", e))
+        }
+    };
+    /*
     let path = match env::var("HOME") {
         Ok(home) => {
             pathstr = format!("{}/.config/lockd/main.cfg", home);
@@ -106,7 +116,7 @@ fn load_config() -> Option<config::Config> {
             println!("Warning: Could not get $HOME: {}, defaulting to config file /etc/lockd.cfg", e);
             path::Path::new("/etc/lockd.cfg")
         }
-    };
+    };*/
 
     let data = match fs::metadata(path) {
         Ok(md) => Some(md),
@@ -116,7 +126,7 @@ fn load_config() -> Option<config::Config> {
                 Ok(_) => {
                     // We can panic here, i just created the file so it should exist and we should
                     // have permissions for it
-                    Some(fs::metadata(path).expect(""))
+                    Some(fs::metadata(path).expect("OSI LAYER 8 ERROR DETECTED IN PROGRAMMER BRAIN. CAN'T WORK UNDER THESE CIRCUMSTANCES."))
                 },
                 // Apparently we don't actually have permision to write the file
                 Err(e) => {

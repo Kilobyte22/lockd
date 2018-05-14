@@ -20,7 +20,8 @@ use msg::{LockMessage, InhibitMessage, CoreMessage, CoreFlag};
 
 struct ActorMainHandles {
     lockscreen: Sender<LockMessage>,
-    inhibitors: Sender<InhibitMessage>
+    inhibitors: Sender<InhibitMessage>,
+    core: Sender<CoreMessage>
 }
 
 struct State {
@@ -131,7 +132,8 @@ fn main() {
 
     let handles = ActorMainHandles {
         lockscreen: lock_send,
-        inhibitors: inh_send
+        inhibitors: inh_send,
+        core: core_send
     };
 
     actor_main(handles, core_recv);
@@ -295,8 +297,8 @@ fn actor_main(handles: ActorMainHandles, inbox: Receiver<CoreMessage>) {
                 },
             CoreMessage::Unlock => 
                 if state.locked && !state.locking {
-                    handles.lockscreen.send(LockMessage::Unlock).unwrap();
                     state.locking = true;
+                    handles.lockscreen.send(LockMessage::Unlock).unwrap();
                 },
             CoreMessage::Locked => {
                 state.locked = true;
@@ -373,9 +375,17 @@ fn actor_main(handles: ActorMainHandles, inbox: Receiver<CoreMessage>) {
                 apply_config(&config, &handles, &mut state);
             },
             CoreMessage::LockCrashed => {
-                state.locking = true;
-                state.locked = false;
-                handles.lockscreen.send(LockMessage::Lock).unwrap();
+                if state.locked {
+                    if state.locking {
+                        // We are currently unlocking, so this is actually what we want.
+                        // Lets update our own state
+                        handles.core.send(CoreMessage::Unlocked).unwrap();
+                    } else {
+                        state.locking = true;
+                        state.locked = false;
+                        handles.lockscreen.send(LockMessage::Lock).unwrap();
+                    }
+                }
             }
 
         }

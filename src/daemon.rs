@@ -6,6 +6,7 @@ use std::sync::mpsc;
 use std::sync::mpsc::{Sender, Receiver};
 use std::{thread, fs, path, env, process};
 use std::io::{Result as IOResult, Write, Read};
+use std::error::Error;
 
 //mod config;
 mod msg;
@@ -14,11 +15,6 @@ mod inhibit;
 mod react;
 mod api;
 mod config;
-
-macro_rules! dbgprintln {
-    ($fmt:expr) => (if cfg!(debug){println!($fmt)});
-    ($fmt:expr, $($arg:tt)*) => (if cfg!(debug){println!($fmt, $($arg)*)});
-}
 
 use msg::{LockMessage, InhibitMessage, CoreMessage, CoreFlag};
 
@@ -186,10 +182,10 @@ fn state_path() -> String {
         let path = path::Path::new(&file);
 
         match fs::metadata(path) {
-            Ok(md) => (),
+            Ok(_) => (),
             // File does not exist or we lack permission.
             Err(_) => {
-                create_path(path.parent().expect("Uhh config file in root? wat."));
+                create_path(path.parent().expect("Uhh config file in root? wat.")).expect("Could not create directory for state");
             }
         };
     }
@@ -198,6 +194,7 @@ fn state_path() -> String {
 }
 
 fn load_config() -> Option<config::Config> {
+    #[allow(unused_assignments)]
     let mut pathstr = String::new();
     let path = match env::var("HOME") {
         Ok(home) => {
@@ -235,7 +232,7 @@ fn load_config() -> Option<config::Config> {
             // TODO: Proper error handling so we can recover
             let mut f = fs::File::open(path).expect("Could not open config file");
             let mut s = String::new();
-            f.read_to_string(&mut s);
+            f.read_to_string(&mut s).unwrap();
             let cfg = config::Config::parse(s).unwrap();
             Some(cfg)
         },
@@ -283,7 +280,9 @@ fn actor_main(handles: ActorMainHandles, inbox: Receiver<CoreMessage>) {
     {
         let cfg = load_config().expect("Could not load configuration");
         apply_config(&cfg, &handles, &mut state);
-        state.load(path::Path::new(&state_path), &cfg);
+        if let Err(e) = state.load(path::Path::new(&state_path), &cfg) {
+            println!("Failed to load state: {}", e.description());
+        }
     }
     for message in inbox {
         println!("Received message in core: {:?}", message);

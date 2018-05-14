@@ -3,7 +3,6 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::Debug;
 use std::result::Result;
-use std::fs::File;
 
 pub const DEFAULT: &'static str = include_str!("../default.cfg");
 
@@ -154,7 +153,7 @@ impl Error for ConfigError {
  
     fn cause(&self) -> Option<&Error> {
         match &self.error_type {
-            &ErrorType::ParseError(ref error) => None, //Some(&error),
+            &ErrorType::ParseError(ref _error) => None, //Some(&error),
             &ErrorType::OptionError(..) => None
         }
     }

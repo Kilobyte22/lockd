@@ -27,7 +27,8 @@ pub enum CoreMessage {
   Suspended,
   QueryFlag(CoreFlag, Sender<bool>),
   AutoLock,
-  SetAutoLock(bool)
+  SetAutoLock(bool),
+  LockCrashed
 }
 
 impl fmt::Debug for CoreMessage {
@@ -42,6 +43,7 @@ impl fmt::Debug for CoreMessage {
             CoreMessage::Suspending => write!(f, "Suspending"),
             CoreMessage::Suspended => write!(f, "Suspended"),
             CoreMessage::ReloadConfig => write!(f, "ReloadConfig"),
+            CoreMessage::LockCrashed => write!(f, "LockCrashed"),
 
             CoreMessage::SuspendOnLid(flag) => {
                 write!(f, "SuspendOnLid({:?})", flag)

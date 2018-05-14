@@ -10,7 +10,7 @@ build = "build.rs"
 [dependencies]
 dbus = "0.3"
 libc = "0.2"
-config-parser = "0.1"
+config-parser = "0.1.0"
 
 [[bin]]
 name = "lockd"

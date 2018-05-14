@@ -372,6 +372,11 @@ fn actor_main(handles: ActorMainHandles, inbox: Receiver<CoreMessage>) {
                     }
                 };
                 apply_config(&config, &handles, &mut state);
+            },
+            CoreMessage::LockCrashed => {
+                state.locking = true;
+                state.locked = false;
+                handles.lockscreen.send(LockMessage::Lock).unwrap();
             }
 
         }

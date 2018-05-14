@@ -42,6 +42,9 @@ fn lock_command(command: &(String, Vec<String>)) -> Child {
 }
     
 fn actor_lock_instance(core: Sender<CoreMessage>, mut child: Child) {
-    child.wait().unwrap();
-    core.send(CoreMessage::Unlocked).unwrap();
+    if child.wait().unwrap().success() {
+        core.send(CoreMessage::Unlocked).unwrap();
+    } else {
+        core.send(CoreMessage::LockCrashed).unwrap();
+    }
 }

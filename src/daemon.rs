@@ -357,7 +357,7 @@ fn actor_main(handles: ActorMainHandles, inbox: Receiver<CoreMessage>) {
             },
             CoreMessage::AutoLock => {
                 if !state.locked && !state.locking && state.autolock {
-                    handles.lockscreen.send(LockMessage::Lock).unwrap();
+                    handles.core.send(CoreMessage::Lock).unwrap();
                 }
             },
             CoreMessage::SetAutoLock(value) => {

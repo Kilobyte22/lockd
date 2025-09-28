@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "lockd",
+    "common",
+    "lockctl",
+]
+resolver = "3"

@@ -1,0 +1,9 @@
+[package]
+name = "lockd-common"
+version = "0.1.0"
+authors = ["Kilobyte22 <stiepen22@gmx.de>"]
+edition = "2024"
+
+[dependencies]
+tracing = "0.1.41"
+zbus = "5.11.0"

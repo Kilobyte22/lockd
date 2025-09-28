@@ -1,0 +1,5 @@
+[package]
+name = "lockctl"
+version = "0.1.0"
+authors = ["Kilobyte22 <stiepen22@gmx.de>"]
+edition = "2024"

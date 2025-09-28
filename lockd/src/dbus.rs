@@ -1,8 +1,8 @@
-use std::mem;
 use crate::config::{Config, ConfigBundle};
 use crate::{StateEvent, StateMessage};
 use futures::StreamExt;
 use lockd_common::dbus::{ManagerProxy, SessionProxy};
+use std::mem;
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
 use tokio::task;
@@ -63,16 +63,19 @@ pub async fn run(
             StateEvent::Locking => {}
             StateEvent::Reload(new_config) => {
                 config = new_config;
-                
+
                 // TODO: There is a small race condition here. Ideally we have two tasks, one waiting for events, the second sending
                 //       the lock command, where the second one can be restarted without dropping events.
-                let old_handlers = mem::replace(&mut handlers_task, task::spawn(crate::error_log_wrapper(run_handlers(
-                    config.clone(),
-                    session.clone(),
-                    manager.clone(),
-                    core_tx.clone(),
-                ))));
-                
+                let old_handlers = mem::replace(
+                    &mut handlers_task,
+                    task::spawn(crate::error_log_wrapper(run_handlers(
+                        config.clone(),
+                        session.clone(),
+                        manager.clone(),
+                        core_tx.clone(),
+                    ))),
+                );
+
                 old_handlers.abort();
             }
         }

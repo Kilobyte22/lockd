@@ -82,14 +82,14 @@ async fn state_machine(
                 running_lockscreen = None;
                 event_tx.send(StateEvent::Unlocked).unwrap();
             }
-            StateMessage::Reload => {
-                match config.reload().await {
-                    Ok(()) => {
-                        event_tx.send(StateEvent::Reload(config.config.clone())).unwrap();
-                    }
-                    Err(_) => {}
+            StateMessage::Reload => match config.reload().await {
+                Ok(()) => {
+                    event_tx
+                        .send(StateEvent::Reload(config.config.clone()))
+                        .unwrap();
                 }
-            }
+                Err(_) => {}
+            },
         }
     }
 }
@@ -103,10 +103,9 @@ async fn main() -> anyhow::Result<()> {
     let xdg_config_home =
         PathBuf::from(std::env::var("XDG_CONFIG_HOME").expect("XDG_CONFIG_HOME not set"));
     let config_path = xdg_config_home.join("lockd").join("lockd.toml");
-    let config = 
-        config::ConfigBundle::load(config_path)
-            .await
-            .context("failed to load configuration")?;
+    let config = config::ConfigBundle::load(config_path)
+        .await
+        .context("failed to load configuration")?;
 
     let (event_tx, event_rx) = broadcast::channel::<StateEvent>(100);
     let (tx, rx) = mpsc::channel(100);
@@ -115,9 +114,9 @@ async fn main() -> anyhow::Result<()> {
         event_rx,
         tx.clone(),
     )));
-    
+
     task::spawn(handle_signals(tx.clone()));
-    
+
     state_machine(config, rx, tx, event_tx).await;
 
     Ok(())

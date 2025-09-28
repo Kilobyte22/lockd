@@ -1,20 +1,18 @@
 extern crate alloc;
 
 use crate::config::{Config, Lockscreen};
-use crate::dbus::DBusMessage;
 use anyhow::Context;
 use std::path::PathBuf;
-use std::process;
 use std::sync::Arc;
+use std::{fmt, process};
 use tokio::process::{Child, Command};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::{signal, task};
 
 mod config;
 mod dbus;
 mod util;
 
-#[derive(Debug)]
 enum StateMessage {
     /// lockd supports having multiple lockscreens for different purposes. The [[lockscreen_id]] specifies
     /// which one is used, as defined in the configuration
@@ -24,6 +22,26 @@ enum StateMessage {
     Unlock,
     UnlockedByUser,
     Reload,
+    GetStatus {
+        reply: oneshot::Sender<CurrentStatus>,
+    },
+}
+
+impl fmt::Debug for StateMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StateMessage::Lock { lockscreen_id } => f
+                .debug_struct("StateMessage::Lock")
+                .field("lockscreen_id", lockscreen_id)
+                .finish(),
+            StateMessage::Unlock => f.debug_struct("StateMessage::Unlock").finish(),
+            StateMessage::UnlockedByUser => f.debug_struct("StateMessage::UnlockedByUser").finish(),
+            StateMessage::Reload => f.debug_struct("StateMessage::Reload").finish(),
+            StateMessage::GetStatus { reply: _ } => f
+                .debug_struct("StateMessage::GetStatus")
+                .finish_non_exhaustive(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -40,13 +58,17 @@ enum State {
     Locked,
 }
 
+struct CurrentStatus {
+    current_lockscreen: Option<String>,
+}
+
 async fn state_machine(
     mut config: config::ConfigBundle,
     mut inbox: mpsc::Receiver<StateMessage>,
     tx: mpsc::Sender<StateMessage>,
     event_tx: broadcast::Sender<StateEvent>,
 ) {
-    let mut running_lockscreen: Option<(u32, Lockscreen)> = None;
+    let mut running_lockscreen: Option<(u32, String, Lockscreen)> = None;
     loop {
         let msg = inbox.recv().await.expect("Inbox channel closed");
         tracing::debug!("State Message: {msg:?}");
@@ -61,8 +83,11 @@ async fn state_machine(
                         .args(&lockscreen.command[1..])
                         .spawn()
                         .unwrap();
-                    running_lockscreen =
-                        Some((child.id().expect("Child has no pid"), lockscreen.clone()));
+                    running_lockscreen = Some((
+                        child.id().expect("Child has no pid"),
+                        lockscreen_id.clone(),
+                        lockscreen.clone(),
+                    ));
                     tracing::debug!("Lockscreen active, PID: {:?}", child.id());
                     task::spawn(watch_child(child, tx.clone()));
                     event_tx.send(StateEvent::Locked).unwrap();
@@ -70,7 +95,7 @@ async fn state_machine(
             }
             StateMessage::Unlock => match running_lockscreen.take() {
                 None => {}
-                Some((child, ls_config)) => {
+                Some((child, _id, ls_config)) => {
                     if ls_config.can_kill {
                         util::kill_process(child).unwrap();
                     } else {
@@ -90,6 +115,11 @@ async fn state_machine(
                 }
                 Err(_) => {}
             },
+            StateMessage::GetStatus { reply } => {
+                let _ = reply.send(CurrentStatus {
+                    current_lockscreen: running_lockscreen.as_ref().map(|(_, id, _)| id.clone()),
+                });
+            }
         }
     }
 }

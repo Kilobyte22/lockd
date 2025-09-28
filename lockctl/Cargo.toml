@@ -3,3 +3,10 @@ name = "lockctl"
 version = "0.1.0"
 authors = ["Kilobyte22 <stiepen22@gmx.de>"]
 edition = "2024"
+
+[dependencies]
+lockd-common = { path = "../common" }
+anyhow = "1.0.100"
+clap = { version = "4.5.48", features = ["cargo"] }
+tokio = { version = "1.47.1", features = ["macros", "rt"] }
+zbus = "5.11.0"

@@ -1,7 +1,7 @@
-use crate::config::{Config, ConfigBundle};
+use crate::config::Config;
 use crate::{StateEvent, StateMessage};
 use futures::StreamExt;
-use lockd_common::dbus::{ManagerProxy, SessionProxy};
+use lockd_common::dbus::{logind_manager::ManagerProxy, session::SessionProxy};
 use std::mem;
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
@@ -21,12 +21,12 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     let connection = Connection::system().await?;
 
-    let manager = lockd_common::dbus::ManagerProxy::new(&connection).await?;
+    let manager = ManagerProxy::new(&connection).await?;
     let session_path = manager.get_session("self").await?;
 
     tracing::debug!("session path: {:?}", session_path);
 
-    let session = lockd_common::dbus::SessionProxy::builder(&connection)
+    let session = SessionProxy::builder(&connection)
         .path(session_path)?
         .build()
         .await?;
@@ -83,7 +83,7 @@ pub async fn run(
 }
 
 async fn handle_lock_messages(
-    mut stream: lockd_common::dbus::LockStream,
+    mut stream: lockd_common::dbus::session::LockStream,
     tx: mpsc::Sender<StateMessage>,
     config: Arc<Config>,
 ) -> anyhow::Result<()> {
@@ -97,7 +97,7 @@ async fn handle_lock_messages(
 }
 
 async fn handle_unlock_messages(
-    mut stream: lockd_common::dbus::UnlockStream,
+    mut stream: lockd_common::dbus::session::UnlockStream,
     tx: mpsc::Sender<StateMessage>,
 ) -> anyhow::Result<()> {
     while let Some(_) = stream.next().await {
@@ -107,7 +107,7 @@ async fn handle_unlock_messages(
 }
 
 async fn handle_pre_sleep_messages(
-    mut stream: lockd_common::dbus::PrepareForSleepStream,
+    mut stream: lockd_common::dbus::logind_manager::PrepareForSleepStream,
     tx: mpsc::Sender<StateMessage>,
     config: Arc<Config>,
 ) -> anyhow::Result<()> {

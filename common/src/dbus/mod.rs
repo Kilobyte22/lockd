@@ -1,5 +1,3 @@
-pub mod manager;
+pub mod lockd_manager;
+pub mod logind_manager;
 pub mod session;
-
-pub use manager::*;
-pub use session::*;

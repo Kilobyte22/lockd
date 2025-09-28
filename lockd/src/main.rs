@@ -1,6 +1,6 @@
 extern crate alloc;
 
-use crate::config::Lockscreen;
+use crate::config::{Config, Lockscreen};
 use crate::dbus::DBusMessage;
 use anyhow::Context;
 use std::path::PathBuf;
@@ -8,7 +8,7 @@ use std::process;
 use std::sync::Arc;
 use tokio::process::{Child, Command};
 use tokio::sync::{broadcast, mpsc};
-use tokio::task;
+use tokio::{signal, task};
 
 mod config;
 mod dbus;
@@ -23,6 +23,7 @@ enum StateMessage {
     },
     Unlock,
     UnlockedByUser,
+    Reload,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +31,7 @@ enum StateEvent {
     Locking,
     Locked,
     Unlocked,
+    Reload(Arc<Config>),
 }
 
 enum State {
@@ -39,7 +41,7 @@ enum State {
 }
 
 async fn state_machine(
-    config: Arc<config::ConfigBundle>,
+    mut config: config::ConfigBundle,
     mut inbox: mpsc::Receiver<StateMessage>,
     tx: mpsc::Sender<StateMessage>,
     event_tx: broadcast::Sender<StateEvent>,
@@ -80,6 +82,14 @@ async fn state_machine(
                 running_lockscreen = None;
                 event_tx.send(StateEvent::Unlocked).unwrap();
             }
+            StateMessage::Reload => {
+                match config.reload().await {
+                    Ok(()) => {
+                        event_tx.send(StateEvent::Reload(config.config.clone())).unwrap();
+                    }
+                    Err(_) => {}
+                }
+            }
         }
     }
 }
@@ -93,19 +103,21 @@ async fn main() -> anyhow::Result<()> {
     let xdg_config_home =
         PathBuf::from(std::env::var("XDG_CONFIG_HOME").expect("XDG_CONFIG_HOME not set"));
     let config_path = xdg_config_home.join("lockd").join("lockd.toml");
-    let config = Arc::new(
+    let config = 
         config::ConfigBundle::load(config_path)
             .await
-            .context("failed to load configuration")?,
-    );
+            .context("failed to load configuration")?;
 
     let (event_tx, event_rx) = broadcast::channel::<StateEvent>(100);
     let (tx, rx) = mpsc::channel(100);
     task::spawn(error_log_wrapper(dbus::run(
-        config.clone(),
+        config.config.clone(),
         event_rx,
         tx.clone(),
     )));
+    
+    task::spawn(handle_signals(tx.clone()));
+    
     state_machine(config, rx, tx, event_tx).await;
 
     Ok(())
@@ -126,5 +138,13 @@ async fn error_log_wrapper<F: Future<Output = anyhow::Result<()>> + Send + 'stat
             tracing::debug!("Details: {:#?}", e);
             process::exit(1);
         }
+    }
+}
+
+async fn handle_signals(tx: mpsc::Sender<StateMessage>) {
+    let mut handler = signal::unix::signal(signal::unix::SignalKind::hangup()).unwrap();
+    loop {
+        handler.recv().await;
+        tx.try_send(StateMessage::Reload).unwrap();
     }
 }

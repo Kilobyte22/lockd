@@ -2,22 +2,23 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 pub struct ConfigBundle {
-    pub config: Config,
+    pub config: Arc<Config>,
     pub path: PathBuf,
 }
 
 impl ConfigBundle {
     pub async fn load(path: PathBuf) -> anyhow::Result<Self> {
         Ok(ConfigBundle {
-            config: Config::load(&path).await?,
+            config: Arc::new(Config::load(&path).await?),
             path,
         })
     }
 
     pub async fn reload(&mut self) -> anyhow::Result<()> {
-        self.config = Config::load(&self.path).await?;
+        self.config = Arc::new(Config::load(&self.path).await?);
         Ok(())
     }
 }

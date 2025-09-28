@@ -11,7 +11,7 @@ lockd-common = { path = "../common" }
 anyhow = "1.0.100"
 env_logger = "0.11.8"
 futures = "0.3.31"
-tokio = { version = "1.9.0", features = ["sync", "process", "rt", "macros", "fs"] }
+tokio = { version = "1.9.0", features = ["sync", "process", "rt", "macros", "fs", "signal"] }
 tracing = "0.1.41"
 zbus = "5.11.0"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }

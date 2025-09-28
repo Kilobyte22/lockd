@@ -1,3 +1,4 @@
+use std::mem;
 use crate::config::{Config, ConfigBundle};
 use crate::{StateEvent, StateMessage};
 use futures::StreamExt;
@@ -14,7 +15,7 @@ pub enum DBusMessage {
 }
 
 pub async fn run(
-    config: Arc<ConfigBundle>,
+    mut config: Arc<Config>,
     mut event_rx: broadcast::Receiver<StateEvent>,
     core_tx: mpsc::Sender<StateMessage>,
 ) -> anyhow::Result<()> {
@@ -31,7 +32,7 @@ pub async fn run(
         .await?;
 
     let mut handlers_task = task::spawn(crate::error_log_wrapper(run_handlers(
-        Arc::new(config.config.clone()),
+        config.clone(),
         session.clone(),
         manager.clone(),
         core_tx.clone(),
@@ -60,6 +61,20 @@ pub async fn run(
                 tracing::trace!("Grabbing suspend inhibitor");
             }
             StateEvent::Locking => {}
+            StateEvent::Reload(new_config) => {
+                config = new_config;
+                
+                // TODO: There is a small race condition here. Ideally we have two tasks, one waiting for events, the second sending
+                //       the lock command, where the second one can be restarted without dropping events.
+                let old_handlers = mem::replace(&mut handlers_task, task::spawn(crate::error_log_wrapper(run_handlers(
+                    config.clone(),
+                    session.clone(),
+                    manager.clone(),
+                    core_tx.clone(),
+                ))));
+                
+                old_handlers.abort();
+            }
         }
     }
 }

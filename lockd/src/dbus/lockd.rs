@@ -2,18 +2,38 @@ use std::mem;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use zbus::{Connection, connection, interface};
 
-use crate::{StateEvent, StateMessage};
+use crate::{CurrentStatus, StateEvent, StateMessage};
 
-pub async fn start(core_tx: mpsc::Sender<StateMessage>) -> anyhow::Result<()> {
-    mem::forget(
-        connection::Builder::session()?
-            .name("de.kilobyte22.lockd")?
-            .serve_at("/de/kilobyte22/lockd", Manager { core_tx })?
-            .build()
-            .await?,
-    );
+pub async fn run(
+    core_tx: mpsc::Sender<StateMessage>,
+    mut event_rx: broadcast::Receiver<StateEvent>,
+) -> anyhow::Result<()> {
+    let connection = connection::Builder::session()?
+        .name("de.kilobyte22.lockd")?
+        .serve_at("/de/kilobyte22/lockd", Manager { core_tx })?
+        .build()
+        .await?;
 
-    Ok(())
+    loop {
+        let message = event_rx.recv().await?;
+        let manager_ref = connection
+            .object_server()
+            .interface::<_, Manager>("/de/kilobyte22/lockd")
+            .await?;
+        let manager = manager_ref.get_mut().await;
+        match message {
+            StateEvent::Locking => {}
+            StateEvent::Locked | StateEvent::Unlocked => {
+                manager.locked_changed(manager_ref.signal_emitter()).await?;
+            }
+            StateEvent::Reload(_) => {}
+            StateEvent::LidInhibitChanged(_) => {
+                manager
+                    .lid_switch_inhibited_changed(manager_ref.signal_emitter())
+                    .await?;
+            }
+        }
+    }
 }
 
 struct Manager {
@@ -38,13 +58,29 @@ impl Manager {
 
     #[zbus(property)]
     async fn locked(&self) -> bool {
-        let (tx, rx) = oneshot::channel();
+        get_status(&self).await.current_lockscreen.is_some()
+    }
+
+    #[zbus(property)]
+    async fn lid_switch_inhibited(&self) -> bool {
+        get_status(&self).await.lid_switch_inhibited
+    }
+
+    #[zbus(property)]
+    async fn set_lid_switch_inhibited(&self, value: bool) {
         self.core_tx
-            .send(StateMessage::GetStatus { reply: tx })
+            .send(StateMessage::ChangeLidInhibit(value))
             .await
             .expect("Cannot send message to state machine");
-        let status = rx.await.expect("Cannot receive message from state machine");
-
-        status.current_lockscreen.is_some()
     }
+}
+
+async fn get_status(manager: &Manager) -> CurrentStatus {
+    let (tx, rx) = oneshot::channel();
+    manager
+        .core_tx
+        .send(StateMessage::GetStatus { reply: tx })
+        .await
+        .expect("Cannot send message to state machine");
+    rx.await.expect("Cannot receive message from state machine")
 }

@@ -72,5 +72,15 @@ impl Config {
 pub struct Lockscreen {
     pub command: Vec<String>,
     #[serde(rename = "can-kill")]
+    #[serde(default = "true_default")]
     pub can_kill: bool,
+    /// Set this to true if the lockscreen supports readyfd. The lock screen will only be assumed as
+    /// running, once a byte has been sent on that fd. The ID of the fd will be passed as env var READYFD
+    #[serde(rename = "ready-fd")]
+    #[serde(default)]
+    pub ready_fd: bool,
+}
+
+fn true_default() -> bool {
+    true
 }

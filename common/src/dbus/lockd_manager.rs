@@ -24,6 +24,12 @@ pub trait Manager {
     /// Reload method
     fn reload(&self) -> zbus::Result<()>;
 
+    /// LidSwitchInhibited property
+    #[zbus(property)]
+    fn lid_switch_inhibited(&self) -> zbus::Result<bool>;
+    #[zbus(property)]
+    fn set_lid_switch_inhibited(&self, value: bool) -> zbus::Result<()>;
+
     /// Locked property
     #[zbus(property)]
     fn locked(&self) -> zbus::Result<bool>;

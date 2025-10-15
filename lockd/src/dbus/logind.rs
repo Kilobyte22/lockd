@@ -43,6 +43,7 @@ pub async fn run(
             .inhibit("sleep", "lockd", "Needs to lock screen", "delay")
             .await?,
     );
+    let mut lid_inhibit_fd = None;
     tracing::trace!("Grabbing suspend inhibitor");
     loop {
         match event_rx.recv().await? {
@@ -77,6 +78,22 @@ pub async fn run(
                 );
 
                 old_handlers.abort();
+            }
+            StateEvent::LidInhibitChanged(value) => {
+                tracing::trace!("LidInhibitChanged {:?}", value);
+                if value == lid_inhibit_fd.is_some() {
+                    continue;
+                }
+                if value {
+                    lid_inhibit_fd = Some(manager.inhibit(
+                        "handle-lid-switch",
+                        "lockd",
+                        "Device should temporarily not go to sleep as per end-user request",
+                        "block",
+                    ).await?);
+                } else {
+                    lid_inhibit_fd.take();
+                }
             }
         }
     }

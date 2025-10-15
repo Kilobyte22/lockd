@@ -1,16 +1,20 @@
 extern crate alloc;
 
 use crate::config::{Config, Lockscreen};
+use crate::event::EventReceiver;
 use anyhow::Context;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fmt, process};
+use std::os::fd::AsRawFd;
 use tokio::process::{Child, Command};
 use tokio::sync::{broadcast, mpsc, oneshot};
-use tokio::{signal, task};
+use tokio::{net, signal, task};
+use tokio::io::AsyncReadExt;
 
 mod config;
 mod dbus;
+mod event;
 mod util;
 
 enum StateMessage {
@@ -25,6 +29,8 @@ enum StateMessage {
     GetStatus {
         reply: oneshot::Sender<CurrentStatus>,
     },
+    ChangeLidInhibit(bool),
+    LockscreenReady,
 }
 
 impl fmt::Debug for StateMessage {
@@ -40,6 +46,11 @@ impl fmt::Debug for StateMessage {
             StateMessage::GetStatus { reply: _ } => f
                 .debug_struct("StateMessage::GetStatus")
                 .finish_non_exhaustive(),
+            StateMessage::ChangeLidInhibit(value) => f
+                .debug_tuple("StateMessage::ChangeLidInhibit")
+                .field(value)
+                .finish(),
+            StateMessage::LockscreenReady => f.debug_struct("StateMessage::LockscreenReady").finish(),
         }
     }
 }
@@ -50,16 +61,36 @@ enum StateEvent {
     Locked,
     Unlocked,
     Reload(Arc<Config>),
+    LidInhibitChanged(bool),
 }
 
+#[derive(Debug, Clone)]
 enum State {
     Unlocked,
-    Locking,
-    Locked,
+    Locking(LockscreenInfo),
+    Locked(LockscreenInfo),
+}
+
+impl State {
+    fn get_lockscreen_info(&self) -> Option<&LockscreenInfo> {
+        match self {
+            State::Unlocked => None,
+            State::Locking(lockscreen_info) => Some(lockscreen_info),
+            State::Locked(lockscreen_info) => Some(lockscreen_info),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct LockscreenInfo {
+    pid: u32,
+    name: String,
+    config: Lockscreen,
 }
 
 struct CurrentStatus {
     current_lockscreen: Option<String>,
+    lid_switch_inhibited: bool,
 }
 
 async fn state_machine(
@@ -68,43 +99,77 @@ async fn state_machine(
     tx: mpsc::Sender<StateMessage>,
     event_tx: broadcast::Sender<StateEvent>,
 ) {
-    let mut running_lockscreen: Option<(u32, String, Lockscreen)> = None;
+    let mut state = State::Unlocked;
+    let mut lid_switch_inhibited = false;
     loop {
         let msg = inbox.recv().await.expect("Inbox channel closed");
         tracing::debug!("State Message: {msg:?}");
         match msg {
             StateMessage::Lock { lockscreen_id } => {
-                if running_lockscreen.is_some() {
+                if matches!(state, State::Locked(_)) {
                     // We are already locked, we shouldn't lock a second time
                     continue;
                 }
                 if let Some(lockscreen) = config.lockscreens.get(&lockscreen_id) {
-                    let child = Command::new(&lockscreen.command[0])
-                        .args(&lockscreen.command[1..])
+                    let mut command = Command::new(&lockscreen.command[0]);
+                    command.args(&lockscreen.command[1..]);
+
+                    let ready_rx = if lockscreen.ready_fd {
+                        let (send, receive) = net::unix::pipe::pipe().expect("failed to create pipe");
+                        unsafe {
+                            command.pre_exec(move || {
+                                std::env::set_var("READYFD", format!("{}", send.as_raw_fd()));
+                                Ok(())
+                            });
+                        }
+                        Some(receive)
+                    } else {
+                        None
+                    };
+
+                    let child = command
                         .spawn()
                         .unwrap();
-                    running_lockscreen = Some((
-                        child.id().expect("Child has no pid"),
-                        lockscreen_id.clone(),
-                        lockscreen.clone(),
-                    ));
+                    
+                    let lockscreen_info = LockscreenInfo {
+                        pid: child.id().expect("Child has no pid"),
+                        name: lockscreen_id.clone(),
+                        config: lockscreen.clone(),
+                    };
                     tracing::debug!("Lockscreen active, PID: {:?}", child.id());
                     task::spawn(watch_child(child, tx.clone()));
-                    event_tx.send(StateEvent::Locked).unwrap();
+                    if let Some(mut ready_rx) = ready_rx {
+                        event_tx.send(StateEvent::Locking).unwrap();
+                        state = State::Locking(lockscreen_info);
+                        let tx = tx.clone();
+                        task::spawn(async move {
+                            let mut buf = vec![0];
+                            match ready_rx.read(&mut buf).await {
+                                Ok(_) => tx.send(StateMessage::LockscreenReady).await.unwrap(),
+                                Err(_) => {},
+                            }
+                            
+                        });
+                    } else {
+                        event_tx.send(StateEvent::Locked).unwrap();
+                        state = State::Locked(lockscreen_info);
+                    }
                 }
             }
-            StateMessage::Unlock => match running_lockscreen.take() {
-                None => {}
-                Some((child, _id, ls_config)) => {
-                    if ls_config.can_kill {
-                        util::kill_process(child).unwrap();
-                    } else {
-                        tracing::warn!("Lockscreen does not support unlocking from the outside");
+            StateMessage::Unlock => {
+                match state.get_lockscreen_info() {
+                    None => {}
+                    Some(LockscreenInfo { config: ls_config, pid: child, .. }) => {
+                        if ls_config.can_kill {
+                            util::kill_process(*child).unwrap();
+                        } else {
+                            tracing::warn!("Lockscreen does not support unlocking from the outside");
+                        }
                     }
                 }
             },
             StateMessage::UnlockedByUser => {
-                running_lockscreen = None;
+                state = State::Unlocked;
                 event_tx.send(StateEvent::Unlocked).unwrap();
             }
             StateMessage::Reload => match config.reload().await {
@@ -117,8 +182,21 @@ async fn state_machine(
             },
             StateMessage::GetStatus { reply } => {
                 let _ = reply.send(CurrentStatus {
-                    current_lockscreen: running_lockscreen.as_ref().map(|(_, id, _)| id.clone()),
+                    current_lockscreen: match &state {
+                        State::Locked(LockscreenInfo { name, .. }) => Some(name.to_owned()),
+                        _ => None,
+                    },
+                    lid_switch_inhibited,
                 });
+            }
+            StateMessage::ChangeLidInhibit(value) => {
+                if lid_switch_inhibited != value {
+                    lid_switch_inhibited = value;
+                    event_tx.send(StateEvent::LidInhibitChanged(value)).unwrap();
+                }
+            }
+            StateMessage::LockscreenReady => {
+                todo!()
             }
         }
     }
@@ -137,13 +215,15 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("failed to load configuration")?;
 
-    let (event_tx, event_rx) = broadcast::channel::<StateEvent>(100);
+    let (event_tx, _) = broadcast::channel::<StateEvent>(100);
     let (tx, rx) = mpsc::channel(100);
-    task::spawn(error_log_wrapper(dbus::run(
+    let receiver = EventReceiver::new(event_tx.clone());
+
+    dbus::start(
         config.config.clone(),
-        event_rx,
+        receiver,
         tx.clone(),
-    )));
+    ).await;
 
     task::spawn(handle_signals(tx.clone()));
 

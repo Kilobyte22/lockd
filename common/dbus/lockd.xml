@@ -6,5 +6,6 @@
             <arg name="lockscreen" type="s"/>
         </method>
         <method name="Reload"/>
+        <property name="LidSwitchInhibited" type="b" access="readwrite"/>
     </interface>
 </node>

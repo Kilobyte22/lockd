@@ -16,6 +16,7 @@ mod config;
 mod dbus;
 mod event;
 mod util;
+mod lid;
 
 enum StateMessage {
     /// lockd supports having multiple lockscreens for different purposes. The [[lockscreen_id]] specifies
@@ -138,6 +139,8 @@ async fn state_machine(
                     };
                     tracing::debug!("Lockscreen active, PID: {:?}", child.id());
                     task::spawn(watch_child(child, tx.clone()));
+                    
+                    // TODO: Kommentieren was zum fick hier passiert
                     if let Some(mut ready_rx) = ready_rx {
                         event_tx.send(StateEvent::Locking).unwrap();
                         state = State::Locking(lockscreen_info);
@@ -215,7 +218,7 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("failed to load configuration")?;
 
-    let (event_tx, _) = broadcast::channel::<StateEvent>(100);
+    let (event_tx, event_rx) = broadcast::channel::<StateEvent>(100);
     let (tx, rx) = mpsc::channel(100);
     let receiver = EventReceiver::new(event_tx.clone());
 
@@ -226,6 +229,19 @@ async fn main() -> anyhow::Result<()> {
     ).await;
 
     task::spawn(handle_signals(tx.clone()));
+
+    {
+        let lockscreen_id = config.default_lockscreen.clone();
+        let tx = tx.clone();
+        task::spawn(async move {
+            match lid::watch(tx, lockscreen_id, event_rx).await {
+                Ok(()) => {}
+                Err(e) => {
+                    tracing::warn!("failed to watch lockscreen, lid locking will only be available when suspend is active: {}", e);
+                }
+            }
+        });
+    }
 
     state_machine(config, rx, tx, event_tx).await;
 

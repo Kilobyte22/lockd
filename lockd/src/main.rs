@@ -1,16 +1,17 @@
 extern crate alloc;
 
-use crate::config::{Config, Lockscreen};
+use crate::config::{Config, Lockscreen, ReadyFd};
 use crate::event::EventReceiver;
 use anyhow::Context;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fmt, process};
 use std::os::fd::AsRawFd;
+use std::process::Stdio;
 use tokio::process::{Child, Command};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::{net, signal, task};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 mod config;
 mod dbus;
@@ -114,23 +115,38 @@ async fn state_machine(
                 if let Some(lockscreen) = config.lockscreens.get(&lockscreen_id) {
                     let mut command = Command::new(&lockscreen.command[0]);
                     command.args(&lockscreen.command[1..]);
-
-                    let ready_rx = if lockscreen.ready_fd {
-                        let (send, receive) = net::unix::pipe::pipe().expect("failed to create pipe");
-                        unsafe {
-                            command.pre_exec(move || {
-                                std::env::set_var("READYFD", format!("{}", send.as_raw_fd()));
-                                Ok(())
-                            });
+                    
+                    match &lockscreen.ready_fd {
+                        Some(ReadyFd::Pipe) => {
+                            let (send, mut receive) = net::unix::pipe::pipe().expect("failed to create pipe");
+                            if let Some(ready_fd_environment) = &lockscreen.ready_fd_environment {
+                                command.env(ready_fd_environment, send.as_raw_fd().to_string());
+                            }
+                            watch_lockscreen_reader(receive, &tx);
                         }
-                        Some(receive)
-                    } else {
-                        None
-                    };
+                        Some(ReadyFd::Stdout) => {
+                            command.stdout(Stdio::piped());
+                        }
+                        Some(ReadyFd::Stderr) => {
+                            command.stdout(Stdio::piped());
+                        }
+                        None => {}
+                    }
 
-                    let child = command
+                    let mut child = command
                         .spawn()
                         .unwrap();
+                    
+                    match &lockscreen.ready_fd {
+                        Some(ReadyFd::Stdout) => {
+                            let stdout = child.stdout.take().unwrap();
+                            task::spawn(async move {
+                                let buffer = vec![];
+                                stdout.read();
+                            })
+                        }
+                        _ => {}
+                    }
                     
                     let lockscreen_info = LockscreenInfo {
                         pid: child.id().expect("Child has no pid"),
@@ -141,18 +157,9 @@ async fn state_machine(
                     task::spawn(watch_child(child, tx.clone()));
                     
                     // TODO: Kommentieren was zum fick hier passiert
-                    if let Some(mut ready_rx) = ready_rx {
+                    if lockscreen_info.config.ready_fd.is_some() {
                         event_tx.send(StateEvent::Locking).unwrap();
                         state = State::Locking(lockscreen_info);
-                        let tx = tx.clone();
-                        task::spawn(async move {
-                            let mut buf = vec![0];
-                            match ready_rx.read(&mut buf).await {
-                                Ok(_) => tx.send(StateMessage::LockscreenReady).await.unwrap(),
-                                Err(_) => {},
-                            }
-                            
-                        });
                     } else {
                         event_tx.send(StateEvent::Locked).unwrap();
                         state = State::Locked(lockscreen_info);
@@ -264,6 +271,17 @@ async fn error_log_wrapper<F: Future<Output = anyhow::Result<()>> + Send + 'stat
             process::exit(1);
         }
     }
+}
+
+/// Starts a background task which will read from the provided reader. As soon as a dingle byte is received
+/// the background task will send [[StateMessage::LockscreenReady]] on the provided [reader] and terminate 
+fn watch_lockscreen_reader<R: AsyncRead + Unpin>(mut reader: R, tx: &mpsc::Sender<StateMessage>) {
+    task::spawn(async move {
+        let mut buf = vec![0];
+        if reader.read(&mut buf).await.is_ok() {
+            tx.send(StateMessage::LockscreenReady).await.unwrap()
+        }
+    });
 }
 
 async fn handle_signals(tx: mpsc::Sender<StateMessage>) {

@@ -75,10 +75,23 @@ pub struct Lockscreen {
     #[serde(default = "true_default")]
     pub can_kill: bool,
     /// Set this to true if the lockscreen supports readyfd. The lock screen will only be assumed as
-    /// running, once a byte has been sent on that fd. The ID of the fd will be passed as env var READYFD
+    /// running, once a byte has been sent on that fd. Use the {fd} placeholder to reference the file
+    /// descriptor
     #[serde(rename = "ready-fd")]
     #[serde(default)]
-    pub ready_fd: bool,
+    pub ready_fd: Option<ReadyFd>,
+    /// If set, the allocated fd will be passed in the named environment variable
+    pub ready_fd_environment: Option<String>
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub enum ReadyFd {
+    #[serde(rename = "stdout")]
+    Stdout,
+    #[serde(rename = "stderr")]
+    Stderr,
+    #[serde(rename = "pipe")]
+    Pipe,
 }
 
 fn true_default() -> bool {
